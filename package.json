@@ -1,8 +1,8 @@
 {
   "name": "browsermob",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "bin": {
-    "browsermob-manager": "./bin/browsermob-manager",
+    "browsermob-manager": "./bin/browsermob-manager"
   },
   "description": "Fine-grained HAR file creation and inspection in Selenium tests.",
   "main": "index.js",
