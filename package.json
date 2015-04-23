@@ -1,0 +1,32 @@
+{
+  "name": "browsermob",
+  "version": "0.0.1",
+  "bin": {
+    "browsermob-manager": "./bin/browsermob-manager",
+  },
+  "description": "Fine-grained HAR file creation and inspection in Selenium tests.",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha -t 10000 -r ./test/setupExpect.js './test/**/*.js'"
+  },
+  "keywords": [
+    "testing",
+    "har",
+    "performance",
+    "performance-testing",
+    "selenium"
+  ],
+  "author": "Andrew Yurisich <droogans@gmail.com> (http://andrew.yurisich.com/)",
+  "license": "Apache License, Version 2.0",
+  "dependencies": {
+    "adm-zip": "^0.4.7",
+    "fs-extra": "^0.18.2",
+    "lodash": "^3.7.0",
+    "minimist": "^1.1.1",
+    "request": "^2.55.0",
+    "restler-q": "^0.1.1"
+  },
+  "devDependencies": {
+    "mocha": "^2.2.4"
+  }
+}

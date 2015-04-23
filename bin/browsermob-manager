@@ -1,0 +1,137 @@
+#!/usr/bin/env node
+
+var childProcess = require('child_process');
+var fs = require('fs-extra');
+var http = require('http');
+var path = require('path');
+var url = require('url');
+
+var AdmZip = require('adm-zip');
+var rest = require('restler-q');
+var request = require('request');
+
+var BROWSERMOB_URL = 'https://api.github.com/repos/lightbody/browsermob-proxy/releases/latest';
+var BROWSERMOB_DIR = path.resolve(__dirname);
+var argv = require('minimist')(process.argv.slice(2), {
+    default: {
+        port: 9090
+    }
+});
+
+if (argv._.indexOf('help') > -1 || argv.help !== undefined) {
+    console.log([
+        'Usage: browsermob-manager <command>',
+        'Commands:',
+        '  update: install or update selected binaries',
+        '  start: start up the selenium server',
+        '  status: list the current available drivers',
+        '',
+        'Options:',
+        '  --port    Use with `start` command to bring browsermob-proxy up on that port    [defalut: 9090]'
+    ].join('\n'));
+    return;
+}
+
+var getReleaseInformation = function () {
+    var existingRelease = fs.readdirSync(BROWSERMOB_DIR).filter(function (directoryResource) {
+        return directoryResource.indexOf('-bin') > -1;
+    })[0];
+
+    return rest.get(BROWSERMOB_URL).then(function (release) {
+        var currentRelease = release.assets[0].name;
+        return { current: currentRelease, existing: existingRelease, full: release };
+    }, function (error) {
+        console.log('Error:', error);
+        process.exit(1);
+    });
+};
+
+var isUpToDate = function (currentRelease, existingRelease) {
+    return currentRelease.indexOf(existingRelease) > -1;
+};
+
+if (argv._.indexOf('status') > -1) {
+    getReleaseInformation().then(function (release) {
+        if (isUpToDate(release.current, release.existing)) {
+            console.log('Latest release is up to date:', release.existing);
+        } else {
+            console.log([
+                'Out of date! Run `browsermob-manager update` to get the latest version.',
+                'Currently installed version: ' + release.existing,
+                'Latest release:              ' + release.current,
+                '',
+                'NOTE: Updating will remove any previously installed versions.'
+            ].join('\n'));
+        }
+        process.exit(0);
+    });
+}
+
+var deletePreviousVersions = function (mostRecentInstallPath) {
+    fs.readdirSync(BROWSERMOB_DIR).forEach(function (directoryResource) {
+        var fullPath = path.resolve(__dirname, directoryResource);
+        if (fullPath.indexOf(mostRecentInstallPath) === -1) {
+            // only delete directories, never this file
+            if (fs.lstatSync(fullPath).isDirectory()) {
+                console.log('Deleting previous version', fullPath);
+                fs.removeSync(fullPath);
+            }
+        }
+    });
+};
+
+var downloadLatest = function (release) {
+    var assetLink = release.full.assets[0].browser_download_url;
+    var filePath = path.join(BROWSERMOB_DIR, release.current);
+    console.log('Downloading ' + assetLink + '...');
+    // `request` supports redirects *and* streaming, both of which are required for downloading zip files from github
+    request(assetLink)
+        .pipe(fs.createWriteStream(filePath))
+        .on('close', function () {
+            console.log('Extracting ' + filePath + '...');
+            var zip = new AdmZip(filePath);
+            zip.extractAllTo(BROWSERMOB_DIR, true);
+            var unzippedPath = filePath.replace(/-bin\.zip$/, '');
+            fs.chmodSync(path.join(unzippedPath, 'bin', 'browsermob-proxy'), '777');
+            fs.unlinkSync(filePath);
+            deletePreviousVersions(unzippedPath);
+            process.exit(0);
+        });
+};
+
+if (argv._.indexOf('update') > -1) {
+    getReleaseInformation().then(function (release) {
+        if (isUpToDate(release.current, release.existing)) {
+            console.log('browsermob-proxy is up to date:', release.current);
+            process.exit(0);
+        }
+        downloadLatest(release);
+    });
+}
+
+if (argv._.indexOf('start') > -1) {
+    var installed = fs.readdirSync(BROWSERMOB_DIR).filter(function (directoryResource) {
+        return directoryResource.indexOf('browsermob-proxy') > -1;
+    });
+
+    if (installed.length === 0) {
+        console.log([
+            'browsermob-proxy is not installed!',
+            'Run `browsermob-manager update` to get the latest version.'
+        ].join('\n'));
+        process.exit(1);
+    }
+
+    // if there's more than one version installed, use the most recent one
+    var latestBinary = path.resolve(BROWSERMOB_DIR, installed.sort().reverse()[0], 'bin', 'browsermob-proxy');
+    var browsermobProcess = childProcess.spawn(latestBinary, ['-port', argv.port], { stdio: 'inherit' });
+    console.log('browsermob-proxy.pid: ' + browsermobProcess.pid);
+    browsermobProcess.on('exit', function (code) {
+        console.log('browsermob-proxy has exited with code ' + code);
+        process.exit(code);
+    });
+    process.stdin.resume();
+    process.on('SIGINT', function() {
+        console.log('Staying alive until the Selenium Standalone process exits');
+    });
+}
